@@ -77,7 +77,7 @@ using namespace fhe_ops_lib;
  * @note Output: std::shared_ptr<CCiphertext/CPlaintext/etc> stored in std::any
  */
 inline ExecutorFunc
-create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int mf_nbits = 0, int key_mf_nbits = 0) {
+create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int mf_nbits = 64, int key_mf_nbits = 64) {
     if (algorithm == Algo::ALGO_BFV) {
         return [heterogeneous_mode, mf_nbits, key_mf_nbits](ExecutionContext& ctx,
                                                             const std::unordered_map<NodeIndex, std::any>& inputs,
@@ -152,12 +152,13 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         BfvPlaintextMul* pt = input_node->is_input ?
                                                   static_cast<BfvPlaintextMul*>(input_ptr.get()) :
                                                   std::any_cast<std::shared_ptr<BfvPlaintextMul>>(input_any).get();
+                        bfv_plaintext_mul_inv_mform_and_mul_by_pow2(param.get(), pt->get(), mf_nbits);
+
                         if (!heterogeneous_mode) {
                             output = input_node->is_input ? std::shared_ptr<BfvPlaintextMul>(input_ptr, pt) :
                                                             std::any_cast<std::shared_ptr<BfvPlaintextMul>>(input_any);
                             break;
                         }
-                        bfv_plaintext_mul_inv_mform_and_mul_by_pow2(param.get(), pt->get(), mf_nbits);
 
                         CPlaintext* c_pt = (CPlaintext*)malloc(sizeof(CPlaintext));
                         export_bfv_plaintext_mul(pt->get(), c_pt);
@@ -327,12 +328,13 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         CkksPlaintextMul* pt = input_node->is_input ?
                                                    static_cast<CkksPlaintextMul*>(input_ptr.get()) :
                                                    std::any_cast<std::shared_ptr<CkksPlaintextMul>>(input_any).get();
+                        ckks_plaintext_mul_inv_mform_and_mul_by_pow2(param.get(), pt->get(), mf_nbits);
+
                         if (!heterogeneous_mode) {
                             output = input_node->is_input ? std::shared_ptr<CkksPlaintextMul>(input_ptr, pt) :
                                                             std::any_cast<std::shared_ptr<CkksPlaintextMul>>(input_any);
                             break;
                         }
-                        ckks_plaintext_mul_inv_mform_and_mul_by_pow2(param.get(), pt->get(), mf_nbits);
 
                         CPlaintext* c_pt = (CPlaintext*)malloc(sizeof(CPlaintext));
                         export_ckks_plaintext_mul(pt->get(), c_pt);

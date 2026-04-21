@@ -39,6 +39,11 @@
 #include "../lib/thread_pool/BS_thread_pool.hpp"
 #include "mega_ag.h"
 #include "../lib/gsl/span"
+#include "../tools/task_progress_bar.h"
+
+extern "C" {
+#include "../fhe_ops_lib/structs_v2.h"
+}
 
 using namespace fhe_ops_lib;
 
@@ -98,14 +103,20 @@ void init_empty_context(const nlohmann::json& param_json, std::unique_ptr<TConte
 /**
  * @brief Set encryption keys (RLK, GLK, SWK) in context from input arguments
  *
- * This function scans input_args for key types and sets them in the context.
- * Used by CPU/GPU wrappers to initialize context with encryption keys.
+ * This function scans input_args for key types, applies Montgomery form conversion,
+ * and sets them in the context. Used by CPU wrapper to initialize context with
+ * encryption keys.
  *
+ * @tparam SchemeType Scheme type (HEScheme::BFV or HEScheme::CKKS)
  * @tparam TContext Context type (BfvContext, CkksContext, or CkksBtpContext)
  * @param input_args Input arguments array
  * @param context Context to set keys in
+ * @param key_mf_nbits Montgomery form bits for keys (default 64)
  */
-template <typename TContext> void set_context_keys(gsl::span<CArgument> input_args, TContext& context) {
+template <HEScheme SchemeType, typename TContext>
+void set_context_keys(gsl::span<CArgument> input_args, TContext& context, int key_mf_nbits = 64) {
+    auto param_handle = context.get_parameter().get();
+
     for (size_t i = 0; i < input_args.size(); ++i) {
         auto& arg = input_args[i];
         switch (arg.type) {
@@ -113,6 +124,11 @@ template <typename TContext> void set_context_keys(gsl::span<CArgument> input_ar
                 Handle** handle_array = static_cast<Handle**>(arg.data);
                 for (int j = 0; j < arg.size; ++j) {
                     RelinKey* rlk_ptr = static_cast<RelinKey*>(handle_array[j]);
+                    if constexpr (SchemeType == HEScheme::BFV) {
+                        set_bfv_rlk_n_mform_bits(param_handle, rlk_ptr->get(), key_mf_nbits);
+                    } else {
+                        set_ckks_rlk_n_mform_bits(param_handle, rlk_ptr->get(), key_mf_nbits);
+                    }
                     context.set_context_relin_key(*rlk_ptr);
                 }
                 break;
@@ -121,6 +137,11 @@ template <typename TContext> void set_context_keys(gsl::span<CArgument> input_ar
                 Handle** handle_array = static_cast<Handle**>(arg.data);
                 for (int j = 0; j < arg.size; ++j) {
                     GaloisKey* glk_ptr = static_cast<GaloisKey*>(handle_array[j]);
+                    if constexpr (SchemeType == HEScheme::BFV) {
+                        set_bfv_glk_n_mform_bits(param_handle, glk_ptr->get(), key_mf_nbits);
+                    } else {
+                        set_ckks_glk_n_mform_bits(param_handle, glk_ptr->get(), key_mf_nbits);
+                    }
                     context.set_context_galois_key(*glk_ptr);
                 }
                 break;
@@ -131,6 +152,7 @@ template <typename TContext> void set_context_keys(gsl::span<CArgument> input_ar
                     std::string key_id(arg.id);
                     for (int j = 0; j < arg.size; ++j) {
                         KeySwitchKey* swk_ptr = static_cast<KeySwitchKey*>(handle_array[j]);
+                        set_ckks_swk_n_mform_bits(param_handle, swk_ptr->get(), key_mf_nbits);
                         if (key_id == "swk_dts") {
                             context.set_context_switch_key_dts(*swk_ptr);
                         } else if (key_id == "swk_std") {
@@ -152,7 +174,7 @@ template <typename TContext> void set_context_keys(gsl::span<CArgument> input_ar
  *
  * This function combines three steps:
  * 1. Initialize empty context from parameter JSON
- * 2. Set encryption keys (RLK, GLK, SWK) from input arguments
+ * 2. Set encryption keys (RLK, GLK, SWK) from input arguments with mform conversion
  * 3. Create bootstrapper if using CkksBtpContext
  *
  * @tparam SchemeType Scheme type (HEScheme::BFV or HEScheme::CKKS)
@@ -160,16 +182,18 @@ template <typename TContext> void set_context_keys(gsl::span<CArgument> input_ar
  * @param param_json Parameter JSON
  * @param input_args Input arguments array containing keys
  * @param context Output unique_ptr to store the initialized context
+ * @param key_mf_nbits Montgomery form bits for keys (default 64)
  */
 template <HEScheme SchemeType, typename TContext>
 void init_context(const nlohmann::json& param_json,
                   gsl::span<CArgument> input_args,
-                  std::unique_ptr<TContext>& context) {
+                  std::unique_ptr<TContext>& context,
+                  int key_mf_nbits = 64) {
     // Step 1: Initialize empty context
     init_empty_context<SchemeType, TContext>(param_json, context);
 
-    // Step 2: Set keys in context
-    set_context_keys(input_args, *context);
+    // Step 2: Set keys in context with mform conversion
+    set_context_keys<SchemeType>(input_args, *context, key_mf_nbits);
 
     // Step 3: Create bootstrapper if needed
     if constexpr (std::is_same_v<TContext, CkksBtpContext>) {
@@ -380,6 +404,9 @@ void run_tasks(const MegaAG& mega_ag,
 
     size_t task_count(mega_ag.computes.size());
 
+    // Progress bar for task completion tracking
+    TaskProgressBar progress_bar(task_count);
+
     // Task scheduling structures
     std::mutex m_mutex;
     std::atomic<size_t> total_tasks(task_count);
@@ -489,6 +516,8 @@ void run_tasks(const MegaAG& mega_ag,
         }
 
         if (has_task) {
+            progress_bar.update(completed_tasks.load());
+
             const ComputeNode& compute_node = mega_ag.computes.at(next_task);
             if (compute_node.on_cpu) {
                 // Submit to CPU thread pool
@@ -518,6 +547,8 @@ void run_tasks(const MegaAG& mega_ag,
     }
 
     pool.wait();
+
+    progress_bar.finalize();
 
     // Call cleanup function if provided (e.g., gpu_pool.wait() for GPU mode)
     if (cleanup) {
