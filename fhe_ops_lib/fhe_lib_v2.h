@@ -20,6 +20,7 @@
 #define CXX_FHE_LIB_H
 
 #include <cmath>
+#include <complex>
 #include <inttypes.h>
 #include <memory>
 #include <utility>
@@ -921,8 +922,7 @@ public:
      * @return The encoded plaintext.
      */
     CkksPlaintext encode(const std::vector<double>& x_mg, int level, double scale);
-
-    CkksPlaintext encode_complex(const std::vector<double>& x_mg, int level, double scale);
+    CkksPlaintext encode(const std::vector<std::complex<double>>& x_mg, int level, double scale);
 
     /**
      * Encode message data into a CKKS plaintext in ring-t form for multiplication.
@@ -931,6 +931,7 @@ public:
      * @return The encoded plaintext for multiplication.
      */
     CkksPlaintextRingt encode_ringt(const std::vector<double>& x_mg, double scale);
+    CkksPlaintextRingt encode_ringt(const std::vector<std::complex<double>>& x_mg, double scale);
 
     /**
      * Encode message data into a CKKS plaintext for multiplication.
@@ -940,6 +941,7 @@ public:
      * @return The encoded plaintext for multiplication.
      */
     CkksPlaintextMul encode_mul(const std::vector<double>& x_mg, int level, double scale);
+    CkksPlaintextMul encode_mul(const std::vector<std::complex<double>>& x_mg, int level, double scale);
 
     /**
      * Encode a floating-point array into a CKKS plaintext, with array components directly embedded into plaintext
@@ -984,8 +986,7 @@ public:
      * @return The decoded message data.
      */
     std::vector<double> decode(const CkksPlaintext& x_pt);
-
-    std::vector<double> decode_complex(const CkksPlaintext& x_pt);
+    std::vector<std::complex<double>> decode_complex(const CkksPlaintext& x_pt);
 
     /**
      * Decode a CKKS plaintext into message data (coefficient encoding).
