@@ -46,12 +46,21 @@ jobs:
           submodules: recursive
           token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
 
-      - name: Init FPGA submodules (CI only)
+      - name: Sync submodules
         env:
           TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+          echo "=== Submodule status ==="
+          git submodule status --recursive
+
+      - name: Init FPGA submodules (CI only)
+        env:
+          TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+        run: |
           git -c submodule."backends/lattisense-fpga/lattisense-fpga-runtime".update=checkout \
               -c submodule."backends/lattisense-fpga/lattisense-fpga-linker".update=checkout \
               submodule update --init --recursive \
