@@ -63,7 +63,9 @@ void init_gpu_context(const nlohmann::json& param_json,
         context = std::make_unique<heongpu::HEContext<SchemeType>>(heongpu::keyswitching_type::KEYSWITCHING_METHOD_II,
                                                                    heongpu::sec_level_type::none);
         context->set_poly_modulus_degree(n);
-        // context->set_slot_count(1<<13);
+
+        int slots = param_json["slots"].get<int>();
+        context->set_slot_count(slots);
 
         std::vector<Data64> Q, P;
         for (int i = 0; i <= max_level; i++) {

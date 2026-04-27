@@ -222,10 +222,27 @@ class BfvParam(Param):
 
 
 class CkksParam(Param):
-    def __init__(self, n: int = 8192, slots: int = 0):
+    def __init__(self, n: int = 8192, slots: int = 0, scale: float = 0.0):
         super().__init__(Algo.CKKS, n)
-        self.slots: int = slots if slots > 0 else n // 2
-        self.scale: float = 0.0
+        if slots == 0:
+            self.slots: int = n // 2
+        else:
+            self._validate_slots(slots)
+            self.slots: int = slots
+        self.scale: float = scale
+
+    def _validate_slots(self, slots: int):
+        if slots % 2 != 0:
+            raise ValueError(f'slots must be a multiple of 2, got {slots}')
+        if slots <= 0 or slots > self.n // 2:
+            raise ValueError(f'slots must be in range (0, {self.n // 2}], got {slots}')
+
+    def set_slots(self, slots: int):
+        self._validate_slots(slots)
+        self.slots = slots
+
+    def set_scale(self, scale: float):
+        self.scale = scale
 
     @classmethod
     def create_default_param(cls, n: int):
@@ -239,12 +256,14 @@ class CkksParam(Param):
             instance.q.append(q)
 
         instance.max_level = param_json['max_level']
+        instance.slots = param_json['slots']
+        instance.scale = param_json['scale']
 
         return instance
 
     @classmethod
-    def create_custom_param(cls, n: int, q: List[int], p: List[int]):
-        instance = cls(n)
+    def create_custom_param(cls, n: int, q: List[int], p: List[int], slots: int = 0, scale: float = 0.0):
+        instance = cls(n, slots, scale)
         instance.q = q
         instance.p = p
         instance.max_level = len(q) - 1
@@ -256,6 +275,7 @@ class CkksParam(Param):
         instance.q = [0x7F4E0001, 0x7FB40001, 0x7FD20001, 0x7FEA0001, 0x7FF80001, 0x7FFE0001]
         instance.p = [0xFF5A0001]
         instance.max_level = len(instance.q) - 1
+        instance.scale = 1 << 31
         return instance
 
 
@@ -267,8 +287,8 @@ class CkksBtpParam(CkksParam):
     Contains additional parameters required for CKKS bootstrapping.
     """
 
-    def __init__(self, n: int = 1 << 16, slots: int = 0):
-        super().__init__(n, slots)
+    def __init__(self, n: int = 1 << 16):
+        super().__init__(n)
         self.cts_params: EncodingMatrixParams = None
         self.stc_params: EncodingMatrixParams = None
         self.eval_mod_params: EvalModParams = None
@@ -2289,8 +2309,8 @@ def process_custom_task(
         parameter['t'] = g_param.t
     if isinstance(g_param, CkksParam):
         parameter['slots'] = g_param.slots
-    if isinstance(g_param, CkksBtpParam):
         parameter['scale'] = g_param.scale
+    if isinstance(g_param, CkksBtpParam):
         parameter['btp_cts_start_level'] = g_param.cts_params.level_start
         parameter['btp_cts_depth'] = g_param.cts_params.depth()
         parameter['btp_cts_bsgs_ratio'] = g_param.cts_params.bsgs_ratio

@@ -41,6 +41,7 @@ _p2 = CkksParam.create_custom_param(
     n=8192,
     q=[0x1FFFEC001, 0x3FFF4001, 0x3FFE8001, 0x40020001, 0x40038001, 0x3FFC0001],
     p=[0x800004001],
+    scale=1 << 30,
 )
 _p_toy_btp = CkksBtpParam.create_toy_param()
 _p_btp = CkksBtpParam.create_default_param()
