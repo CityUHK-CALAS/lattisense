@@ -62,9 +62,11 @@ using namespace fhe_ops_lib;
  * and exports Handle to C struct based on data type and format:
  * - BfvCiphertext/CkksCiphertext → CCiphertext
  * - BfvPlaintext/CkksPlaintext → CPlaintext (ringt/mul/normal)
- * - RelinKey/GaloisKey/SwitchKey → CRelinKey/CGaloisKey/CKeySwitchKey
+ * - RelinKey/GaloisKey → CRelinKey/CGaloisKey
+ * - KeySwitchKey → CKeySwitchKey (CKKS only)
  *
  * @param algorithm FHE algorithm (ALGO_BFV or ALGO_CKKS)
+ * @param heterogeneous_mode true to convert to C structs (GPU/FPGA), false to pass through native handles (CPU)
  * @param mf_nbits Montgomery form bits for plaintext mul preprocessing
  *                 (GPU_MFORM_BITS for GPU, V2_FPGA_MFORM_BITS for FPGA)
  * @param key_mf_nbits Montgomery form bits for keys (rlk/glk)
