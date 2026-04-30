@@ -84,7 +84,6 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                                                             std::any& output, const ComputeNode& self) -> void {
             const DatumNode* input_node = self.input_nodes[0];
             DataType data_type = input_node->datum_type;
-            bool is_external_input_node = input_node->is_input;
 
             std::any input_any = inputs.at(input_node->index);
             std::shared_ptr<void> input_ptr;
@@ -116,14 +115,10 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                     CCiphertext* c_ct = (CCiphertext*)malloc(sizeof(CCiphertext));
                     export_bfv_ciphertext(ct->get(), c_ct);
 
-                    if (is_external_input_node) {
-                        output = std::shared_ptr<CCiphertext>(c_ct, [input_any](CCiphertext*) {});
-                    } else {
-                        output = std::shared_ptr<CCiphertext>(c_ct, [input_any](CCiphertext* p) {
-                            free_ciphertext(p, false);
-                            free(p);
-                        });
-                    }
+                    output = std::shared_ptr<CCiphertext>(c_ct, [](CCiphertext* p) {
+                        free_ciphertext(p);
+                        free(p);
+                    });
                     break;
                 }
 
@@ -140,20 +135,14 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         }
                         CPlaintext* c_pt = (CPlaintext*)malloc(sizeof(CPlaintext));
                         export_bfv_plaintext_ringt(pt->get(), c_pt);
-                        if (is_external_input_node) {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext*) {});
-                        } else {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext* p) {
-                                free_plaintext(p, false);
-                                free(p);
-                            });
-                        }
+                        output = std::shared_ptr<CPlaintext>(c_pt, [](CPlaintext* p) {
+                            free_plaintext(p);
+                            free(p);
+                        });
                     } else if (is_mul) {
                         BfvPlaintextMul* pt = input_node->is_input ?
                                                   static_cast<BfvPlaintextMul*>(input_ptr.get()) :
                                                   std::any_cast<std::shared_ptr<BfvPlaintextMul>>(input_any).get();
-                        bfv_plaintext_mul_inv_mform_and_mul_by_pow2(param.get(), pt->get(), mf_nbits);
-
                         if (!heterogeneous_mode) {
                             output = input_node->is_input ? std::shared_ptr<BfvPlaintextMul>(input_ptr, pt) :
                                                             std::any_cast<std::shared_ptr<BfvPlaintextMul>>(input_any);
@@ -161,15 +150,11 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         }
 
                         CPlaintext* c_pt = (CPlaintext*)malloc(sizeof(CPlaintext));
-                        export_bfv_plaintext_mul(pt->get(), c_pt);
-                        if (is_external_input_node) {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext*) {});
-                        } else {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext* p) {
-                                free_plaintext(p, false);
-                                free(p);
-                            });
-                        }
+                        export_bfv_plaintext_mul(param.get(), pt->get(), mf_nbits, c_pt);
+                        output = std::shared_ptr<CPlaintext>(c_pt, [](CPlaintext* p) {
+                            free_plaintext(p);
+                            free(p);
+                        });
                     } else {
                         BfvPlaintext* pt = input_node->is_input ?
                                                static_cast<BfvPlaintext*>(input_ptr.get()) :
@@ -181,14 +166,10 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         }
                         CPlaintext* c_pt = (CPlaintext*)malloc(sizeof(CPlaintext));
                         export_bfv_plaintext(pt->get(), c_pt);
-                        if (is_external_input_node) {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext*) {});
-                        } else {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext* p) {
-                                free_plaintext(p, false);
-                                free(p);
-                            });
-                        }
+                        output = std::shared_ptr<CPlaintext>(c_pt, [](CPlaintext* p) {
+                            free_plaintext(p);
+                            free(p);
+                        });
                     }
                     break;
 
@@ -196,18 +177,13 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                     if (!heterogeneous_mode)
                         break;
                     RelinKey* rlk = static_cast<RelinKey*>(input_ptr.get());
-                    set_bfv_rlk_n_mform_bits(param.get(), rlk->get(), key_mf_nbits);
 
                     CRelinKey* c_rlk = (CRelinKey*)malloc(sizeof(CRelinKey));
-                    export_relin_key(rlk->get(), level, c_rlk);
-                    if (is_external_input_node) {
-                        output = std::shared_ptr<CRelinKey>(c_rlk, [input_any](CRelinKey*) {});
-                    } else {
-                        output = std::shared_ptr<CRelinKey>(c_rlk, [input_any](CRelinKey* p) {
-                            free_relin_key(p, false);
-                            free(p);
-                        });
-                    }
+                    export_bfv_relin_key(param.get(), rlk->get(), level, key_mf_nbits, c_rlk);
+                    output = std::shared_ptr<CRelinKey>(c_rlk, [](CRelinKey* p) {
+                        free_relin_key(p);
+                        free(p);
+                    });
                     break;
                 }
 
@@ -219,20 +195,15 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         input_node->fhe_prop->p.has_value() ? input_node->fhe_prop->p->galois_element : 0;
 
                     GaloisKey* glk = static_cast<GaloisKey*>(input_ptr.get());
-                    set_bfv_glk_n_mform_bits_for_gal(param.get(), glk->get(), galois_element, key_mf_nbits);
 
                     CGaloisKey* c_glk = (CGaloisKey*)malloc(sizeof(CGaloisKey));
                     set_galois_key_steps(c_glk, &galois_element, 1);
 
-                    export_galois_key(glk->get(), level, c_glk);
-                    if (is_external_input_node) {
-                        output = std::shared_ptr<CGaloisKey>(c_glk, [input_any](CGaloisKey*) {});
-                    } else {
-                        output = std::shared_ptr<CGaloisKey>(c_glk, [input_any](CGaloisKey* p) {
-                            free_galois_key(p, false);
-                            free(p);
-                        });
-                    }
+                    export_bfv_galois_key(param.get(), glk->get(), level, key_mf_nbits, c_glk);
+                    output = std::shared_ptr<CGaloisKey>(c_glk, [](CGaloisKey* p) {
+                        free_galois_key(p);
+                        free(p);
+                    });
                     break;
                 }
 
@@ -253,7 +224,6 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                                                             std::any& output, const ComputeNode& self) -> void {
             const DatumNode* input_node = self.input_nodes[0];
             DataType data_type = input_node->datum_type;
-            bool is_external_input_node = input_node->is_input;
 
             std::any input_any = inputs.at(input_node->index);
             std::shared_ptr<void> input_ptr;
@@ -292,14 +262,10 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                     }
                     CCiphertext* c_ct = (CCiphertext*)malloc(sizeof(CCiphertext));
                     export_ckks_ciphertext(ct->get(), c_ct);
-                    if (is_external_input_node) {
-                        output = std::shared_ptr<CCiphertext>(c_ct, [input_any](CCiphertext*) {});
-                    } else {
-                        output = std::shared_ptr<CCiphertext>(c_ct, [input_any](CCiphertext* p) {
-                            free_ciphertext(p, false);
-                            free(p);
-                        });
-                    }
+                    output = std::shared_ptr<CCiphertext>(c_ct, [](CCiphertext* p) {
+                        free_ciphertext(p);
+                        free(p);
+                    });
                     break;
                 }
 
@@ -316,20 +282,14 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         }
                         CPlaintext* c_pt = (CPlaintext*)malloc(sizeof(CPlaintext));
                         export_ckks_plaintext_ringt(pt->get(), c_pt);
-                        if (is_external_input_node) {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext*) {});
-                        } else {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext* p) {
-                                free_plaintext(p, false);
-                                free(p);
-                            });
-                        }
+                        output = std::shared_ptr<CPlaintext>(c_pt, [](CPlaintext* p) {
+                            free_plaintext(p);
+                            free(p);
+                        });
                     } else if (is_mul) {
                         CkksPlaintextMul* pt = input_node->is_input ?
                                                    static_cast<CkksPlaintextMul*>(input_ptr.get()) :
                                                    std::any_cast<std::shared_ptr<CkksPlaintextMul>>(input_any).get();
-                        ckks_plaintext_mul_inv_mform_and_mul_by_pow2(param.get(), pt->get(), mf_nbits);
-
                         if (!heterogeneous_mode) {
                             output = input_node->is_input ? std::shared_ptr<CkksPlaintextMul>(input_ptr, pt) :
                                                             std::any_cast<std::shared_ptr<CkksPlaintextMul>>(input_any);
@@ -337,15 +297,11 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         }
 
                         CPlaintext* c_pt = (CPlaintext*)malloc(sizeof(CPlaintext));
-                        export_ckks_plaintext_mul(pt->get(), c_pt);
-                        if (is_external_input_node) {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext*) {});
-                        } else {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext* p) {
-                                free_plaintext(p, false);
-                                free(p);
-                            });
-                        }
+                        export_ckks_plaintext_mul(param.get(), pt->get(), mf_nbits, c_pt);
+                        output = std::shared_ptr<CPlaintext>(c_pt, [](CPlaintext* p) {
+                            free_plaintext(p);
+                            free(p);
+                        });
                     } else {
                         CkksPlaintext* pt = input_node->is_input ?
                                                 static_cast<CkksPlaintext*>(input_ptr.get()) :
@@ -357,14 +313,10 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         }
                         CPlaintext* c_pt = (CPlaintext*)malloc(sizeof(CPlaintext));
                         export_ckks_plaintext(pt->get(), c_pt);
-                        if (is_external_input_node) {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext*) {});
-                        } else {
-                            output = std::shared_ptr<CPlaintext>(c_pt, [input_any](CPlaintext* p) {
-                                free_plaintext(p, false);
-                                free(p);
-                            });
-                        }
+                        output = std::shared_ptr<CPlaintext>(c_pt, [](CPlaintext* p) {
+                            free_plaintext(p);
+                            free(p);
+                        });
                     }
                     break;
 
@@ -372,18 +324,13 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                     if (!heterogeneous_mode)
                         break;
                     RelinKey* rlk = static_cast<RelinKey*>(input_ptr.get());
-                    set_ckks_rlk_n_mform_bits(param.get(), rlk->get(), key_mf_nbits);
 
                     CRelinKey* c_rlk = (CRelinKey*)malloc(sizeof(CRelinKey));
-                    export_relin_key(rlk->get(), level, c_rlk);
-                    if (is_external_input_node) {
-                        output = std::shared_ptr<CRelinKey>(c_rlk, [input_any](CRelinKey*) {});
-                    } else {
-                        output = std::shared_ptr<CRelinKey>(c_rlk, [input_any](CRelinKey* p) {
-                            free_relin_key(p, false);
-                            free(p);
-                        });
-                    }
+                    export_ckks_relin_key(param.get(), rlk->get(), level, key_mf_nbits, c_rlk);
+                    output = std::shared_ptr<CRelinKey>(c_rlk, [](CRelinKey* p) {
+                        free_relin_key(p);
+                        free(p);
+                    });
                     break;
                 }
 
@@ -394,20 +341,15 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                         input_node->fhe_prop->p.has_value() ? input_node->fhe_prop->p->galois_element : 0;
 
                     GaloisKey* glk = static_cast<GaloisKey*>(input_ptr.get());
-                    set_ckks_glk_n_mform_bits_for_gal(param.get(), glk->get(), galois_element, key_mf_nbits);
 
                     CGaloisKey* c_glk = (CGaloisKey*)malloc(sizeof(CGaloisKey));
                     set_galois_key_steps(c_glk, &galois_element, 1);
 
-                    export_galois_key(glk->get(), level, c_glk);
-                    if (is_external_input_node) {
-                        output = std::shared_ptr<CGaloisKey>(c_glk, [input_any](CGaloisKey*) {});
-                    } else {
-                        output = std::shared_ptr<CGaloisKey>(c_glk, [input_any](CGaloisKey* p) {
-                            free_galois_key(p, false);
-                            free(p);
-                        });
-                    }
+                    export_ckks_galois_key(param.get(), glk->get(), level, key_mf_nbits, c_glk);
+                    output = std::shared_ptr<CGaloisKey>(c_glk, [](CGaloisKey* p) {
+                        free_galois_key(p);
+                        free(p);
+                    });
                     break;
                 }
 
@@ -415,18 +357,13 @@ create_abi_export_executor(Algo algorithm, bool heterogeneous_mode = true, int m
                     if (!heterogeneous_mode)
                         break;
                     KeySwitchKey* swk = static_cast<KeySwitchKey*>(input_ptr.get());
-                    set_ckks_swk_n_mform_bits(param.get(), swk->get(), key_mf_nbits);
 
                     CKeySwitchKey* c_swk = (CKeySwitchKey*)malloc(sizeof(CKeySwitchKey));
-                    export_switching_key(swk->get(), level, sp_level, c_swk);
-                    if (is_external_input_node) {
-                        output = std::shared_ptr<CKeySwitchKey>(c_swk, [input_any](CKeySwitchKey*) {});
-                    } else {
-                        output = std::shared_ptr<CKeySwitchKey>(c_swk, [input_any](CKeySwitchKey* p) {
-                            free_relin_key(p, false);  // CKeySwitchKey is typedef of CRelinKey
-                            free(p);
-                        });
-                    }
+                    export_ckks_switching_key(param.get(), swk->get(), level, sp_level, key_mf_nbits, c_swk);
+                    output = std::shared_ptr<CKeySwitchKey>(c_swk, [](CKeySwitchKey* p) {
+                        free_relin_key(p);  // CKeySwitchKey is typedef of CRelinKey
+                        free(p);
+                    });
                     break;
                 }
 

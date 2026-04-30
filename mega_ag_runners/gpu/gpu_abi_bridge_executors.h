@@ -347,7 +347,7 @@ template <heongpu::Scheme SchemeType> ExecutorFunc create_store_from_gpu_executo
                 auto* c_ct = (CCiphertext*)malloc(sizeof(CCiphertext));
                 alloc_ciphertext(c_ct, gpu_ct->size() - 1, gpu_ct->level(), gpu_ct->ring_size());
                 c_struct = std::shared_ptr<CCiphertext>(c_ct, [](CCiphertext* ptr) {
-                    free_ciphertext(ptr, true);
+                    free_ciphertext(ptr);
                     free(ptr);
                 });
 

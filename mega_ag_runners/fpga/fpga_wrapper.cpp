@@ -259,10 +259,10 @@ void _run_mega_ag_impl(gsl::span<CArgument> input_args,
 
                         auto* c_ct = (CCiphertext*)malloc(sizeof(CCiphertext));
                         alloc_ciphertext(c_ct, degree, level, n);
-                        export_ct_pointers(c_ct, proj->pvo, offset);
+                        export_ct_pointers(c_ct, proj->pvo, offset, false);
 
                         available_data[c_struct_node->index] = std::shared_ptr<CCiphertext>(c_ct, [](CCiphertext* p) {
-                            free_ciphertext(p, false);
+                            free_ciphertext(p);
                             free(p);
                         });
 
@@ -273,6 +273,10 @@ void _run_mega_ag_impl(gsl::span<CArgument> input_args,
 
                 uint64_t total_proj_time_ns = 0;
                 int ret = run_project(&g_fpga_dev, proj, online_phase, &total_proj_time_ns);
+
+                // Free copied input polyvec terms after FPGA run completes
+                free_polyvec_64_terms(proj->pvi);
+
                 if (ret) {
                     throw std::runtime_error("Failed to run FPGA task");
                 }
