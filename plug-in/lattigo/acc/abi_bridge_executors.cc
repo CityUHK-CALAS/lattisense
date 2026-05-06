@@ -41,8 +41,8 @@
 #include "mega_ag.h"
 
 extern "C" {
-#include "fhe_types_v2.h"
-#include "structs_v2.h"
+#include "c_types.h"
+#include "c_structs.h"
 #include "c_argument.h"
 
 // Go callbacks implemented in c_struct_import_export.go

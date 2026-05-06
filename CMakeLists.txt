@@ -298,6 +298,8 @@ add_custom_command(
 
 add_custom_target(go_libs DEPENDS ${LIBLATTIGO_A} ${LIBLATTIGO_SO} ${LIBLATTIGO_H_SANITIZED})
 
+add_subdirectory(abi)
+add_dependencies(abi go_libs)
 add_subdirectory(fhe_ops_lib)
 add_dependencies(fhe_ops_lib go_libs)
 add_subdirectory(cxx_sdk_v2)

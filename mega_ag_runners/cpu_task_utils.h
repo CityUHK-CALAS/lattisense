@@ -42,7 +42,7 @@
 #include "../tools/task_progress_bar.h"
 
 extern "C" {
-#include "../fhe_ops_lib/structs_v2.h"
+#include "../abi/c_structs.h"
 }
 
 using namespace fhe_ops_lib;

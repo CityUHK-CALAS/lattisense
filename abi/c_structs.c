@@ -17,7 +17,7 @@
  */
 
 #include <stdlib.h>
-#include "structs_v2.h"
+#include "c_structs.h"
 #include "liblattigo.h"
 
 void alloc_component(CComponent* component, int n) {

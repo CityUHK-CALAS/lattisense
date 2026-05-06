@@ -42,8 +42,8 @@
 #endif
 
 extern "C" {
-#include "../../fhe_ops_lib/fhe_types_v2.h"
-#include "../../fhe_ops_lib/structs_v2.h"
+#include "../../abi/c_types.h"
+#include "../../abi/c_structs.h"
 }
 
 namespace gpu_wrapper {

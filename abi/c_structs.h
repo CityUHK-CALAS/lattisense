@@ -17,7 +17,7 @@
  */
 
 #pragma once
-#include "fhe_types_v2.h"
+#include "c_types.h"
 
 void alloc_component(CComponent* component, int n);
 

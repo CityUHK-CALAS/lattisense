@@ -47,7 +47,7 @@
 #include <unordered_map>
 
 extern "C" {
-#include "../fhe_ops_lib/structs_v2.h"
+#include "../abi/c_structs.h"
 #include "../mega_ag_runners/c_argument.h"
 }
 

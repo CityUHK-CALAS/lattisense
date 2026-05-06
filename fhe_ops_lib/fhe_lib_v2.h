@@ -31,7 +31,6 @@
 #include <gsl/span>
 
 extern "C" {
-#include "fhe_types_v2.h"
 // Use the sanitized copy of the cgo-generated header. The original liblattigo.h
 // contains #line directives with virtual filenames (e.g. "cgo-builtin-export-prolog")
 // that NVCC's -MD dep scanner emits as Make prerequisites; since those names are not
@@ -41,7 +40,6 @@ extern "C" {
 // by the go_libs build step.
 #include "lattigo/go_sdk/liblattigo_sanitized.h"
 }
-#include "utils.h"
 
 namespace fhe_ops_lib {
 
