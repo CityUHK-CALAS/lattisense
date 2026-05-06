@@ -137,10 +137,14 @@ void init_gpu_context(const nlohmann::json& param_json,
 }
 
 template <heongpu::Scheme SchemeType, typename TContext>
-void _run_mega_ag_impl(gsl::span<CArgument> input_args, gsl::span<CArgument> output_args, const MegaAG& mega_ag) {
+void _run_mega_ag_impl(gsl::span<CArgument> input_args,
+                       gsl::span<CArgument> output_args,
+                       const MegaAG& mega_ag,
+                       ProgressCallback progress_cb = nullptr,
+                       int gpu_device = 0) {
     // cudaSetDevice is thread-local; new threads in the pool default to device 0.
-    // Use the compile-time configured device so all worker threads bind to the same device.
-    constexpr int device = LATTISENSE_GPU_DEVICE;
+    // Use the runtime-specified device so all worker threads bind to the same device.
+    const int device = gpu_device;
     CHECK(cudaSetDevice(device));
 
     // Initialize GPU context and operators for GPU FHE operations
@@ -366,15 +370,17 @@ void _run_mega_ag_impl(gsl::span<CArgument> input_args, gsl::span<CArgument> out
     GpuMemoryMonitor gpu_mem_monitor(100);  // sample every 100 ms
     gpu_mem_monitor.start(GpuMemoryMonitor::next_csv_path("mem_usage_gpu"));
 #endif
-    run_tasks(mega_ag, cpu_pool, base_cpu_context, available_data, get_other_args, submit_gpu_task,
-              [&gpu_pool, &data_ready_events]() {
-                  gpu_pool.wait();
-                  for (auto& pair : data_ready_events) {
-                      cudaEvent_t event = pair.second;
-                      gpu_pool.detach_task([event]() { CHECK(cudaEventDestroy(event)); });
-                  }
-                  gpu_pool.wait();
-              });
+    run_tasks(
+        mega_ag, cpu_pool, base_cpu_context, available_data, get_other_args, submit_gpu_task,
+        [&gpu_pool, &data_ready_events]() {
+            gpu_pool.wait();
+            for (auto& pair : data_ready_events) {
+                cudaEvent_t event = pair.second;
+                gpu_pool.detach_task([event]() { CHECK(cudaEventDestroy(event)); });
+            }
+            gpu_pool.wait();
+        },
+        progress_cb);
 #ifdef LATTISENSE_DEV
     gpu_mem_monitor.stop();
 #endif
@@ -382,15 +388,19 @@ void _run_mega_ag_impl(gsl::span<CArgument> input_args, gsl::span<CArgument> out
 
 // Dispatch function to call _run_mega_ag_impl with appropriate TContext
 template <heongpu::Scheme SchemeType>
-void _run_mega_ag(gsl::span<CArgument> input_args, gsl::span<CArgument> output_args, const MegaAG& mega_ag) {
+void _run_mega_ag(gsl::span<CArgument> input_args,
+                  gsl::span<CArgument> output_args,
+                  const MegaAG& mega_ag,
+                  ProgressCallback progress_cb = nullptr,
+                  int gpu_device = 0) {
     if constexpr (SchemeType == heongpu::Scheme::CKKS) {
         if (mega_ag.parameter.contains("btp_output_level")) {
-            _run_mega_ag_impl<SchemeType, CkksBtpContext>(input_args, output_args, mega_ag);
+            _run_mega_ag_impl<SchemeType, CkksBtpContext>(input_args, output_args, mega_ag, progress_cb, gpu_device);
         } else {
-            _run_mega_ag_impl<SchemeType, CkksContext>(input_args, output_args, mega_ag);
+            _run_mega_ag_impl<SchemeType, CkksContext>(input_args, output_args, mega_ag, progress_cb, gpu_device);
         }
     } else {
-        _run_mega_ag_impl<SchemeType, BfvContext>(input_args, output_args, mega_ag);
+        _run_mega_ag_impl<SchemeType, BfvContext>(input_args, output_args, mega_ag, progress_cb, gpu_device);
     }
 }
 
@@ -399,7 +409,7 @@ public:
     FheGpuTask(const std::string& project_path) {
         mega_ag_ = MegaAG::load(project_path + "/mega_ag.json", Processor::GPU);
 
-        cudaSetDevice(LATTISENSE_GPU_DEVICE);
+        cudaSetDevice(0);  // Warm up default device; actual device is selected at run time
 
         // Warm up the CUDA context, so that the computation time measurment is more accurate.
         heongpu::HEContext<heongpu::Scheme::BFV> context =
@@ -440,10 +450,17 @@ public:
         mega_ag_.bind_custom_executors(custom_executors);
     }
 
-    int run(gsl::span<CArgument> input_args, gsl::span<CArgument> output_args) {
+    int run(gsl::span<CArgument> input_args,
+            gsl::span<CArgument> output_args,
+            ProgressCallback progress_cb = nullptr,
+            int gpu_device = 0) {
         switch (mega_ag_.algo) {
-            case Algo::ALGO_BFV: _run_mega_ag<heongpu::Scheme::BFV>(input_args, output_args, mega_ag_); break;
-            case Algo::ALGO_CKKS: _run_mega_ag<heongpu::Scheme::CKKS>(input_args, output_args, mega_ag_); break;
+            case Algo::ALGO_BFV:
+                _run_mega_ag<heongpu::Scheme::BFV>(input_args, output_args, mega_ag_, progress_cb, gpu_device);
+                break;
+            case Algo::ALGO_CKKS:
+                _run_mega_ag<heongpu::Scheme::CKKS>(input_args, output_args, mega_ag_, progress_cb, gpu_device);
+                break;
             default: throw std::invalid_argument("algo not supported"); break;
         }
 
@@ -492,10 +509,18 @@ int run_fhe_gpu_task(fhe_task_handle handle,
                      CArgument* input_args,
                      uint64_t n_in_args,
                      CArgument* output_args,
-                     uint64_t n_out_args) {
+                     uint64_t n_out_args,
+                     progress_callback_t progress_cb,
+                     void* user_data,
+                     int gpu_device) {
     gpu_wrapper::FheGpuTask* task = (gpu_wrapper::FheGpuTask*)handle;
     gsl::span<CArgument> input_arg_span{input_args, n_in_args};
     gsl::span<CArgument> output_arg_span{output_args, n_out_args};
-    return task->run(input_arg_span, output_arg_span);
+
+    ProgressCallback cb;
+    if (progress_cb) {
+        cb = [progress_cb, user_data](int completed, int total) { progress_cb(completed, total, user_data); };
+    }
+    return task->run(input_arg_span, output_arg_span, cb, gpu_device);
 }
 }  // extern "C"

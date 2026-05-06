@@ -88,4 +88,5 @@ credentials.json
 .env.local
 
 # Superpowers (AI agent workspace)
+.superpowers/
 .worktrees/

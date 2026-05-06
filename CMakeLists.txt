@@ -232,9 +232,7 @@ if(LATTISENSE_ENABLE_GPU)
     set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -g")
     set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -O3")
 
-    set(LATTISENSE_GPU_DEVICE 0 CACHE STRING
-        "CUDA device to use for GPU FHE operations (default: 0)")
-    message(STATUS "GPU support enabled with HEonGPU (CUDA arch: ${LATTISENSE_CUDA_ARCH}, device: ${LATTISENSE_GPU_DEVICE})")
+    message(STATUS "GPU support enabled with HEonGPU (CUDA arch: ${LATTISENSE_CUDA_ARCH})")
 endif()
 
 # standard
@@ -389,6 +387,10 @@ if(LATTISENSE_BUILD_MODE STREQUAL "SHARED")
             CUDA_SEPARABLE_COMPILATION ON
             CUDA_RESOLVE_DEVICE_SYMBOLS ON
         )
+    endif()
+
+    if(LATTISENSE_ENABLE_FPGA)
+        target_link_libraries(lattisense PRIVATE fpga_ops fpga_bfv)
     endif()
 
     set_target_properties(lattisense PROPERTIES
